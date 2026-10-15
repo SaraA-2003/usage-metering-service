@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792068167669,
+      "tag": "0000_Add_Tables_plans_accounts_users",
+      "breakpoints": true
+    }
+  ]
+}
