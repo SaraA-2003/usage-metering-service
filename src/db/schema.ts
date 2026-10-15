@@ -31,6 +31,8 @@ export const plans = pgTable("plans", {
   ),
 ]);
 
+    export type NewPlan = typeof plans.$inferInsert
+    export type Plan = typeof plans.$inferSelect
 export const accounts = pgTable("accounts", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 255 }).notNull(),
@@ -45,6 +47,8 @@ apiKeyHash: varchar("api_key_hash", { length: 64 })
     .unique(),
 });
 
+    export type NewAccount = typeof accounts.$inferInsert
+    export type Account = typeof accounts.$inferSelect
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -56,3 +60,6 @@ export const users = pgTable("users", {
     .defaultNow()
     .$onUpdate(() => new Date()),
 });
+
+    export type NewUser = typeof users.$inferInsert
+    export type User = typeof users.$inferSelect
