@@ -8,6 +8,13 @@
       "when": 1792068167669,
       "tag": "0000_Add_Tables_plans_accounts_users",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792083348824,
+      "tag": "0001_Add_OnDelete_restrict",
+      "breakpoints": true
     }
   ]
 }

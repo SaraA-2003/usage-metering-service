@@ -1,7 +1,38 @@
 import type { Request, Response, NextFunction } from "express";
+import type { Account } from "./db/schema.js";
+import { hashApiKey } from "./auth.js";
+import { getAccountByApiKeyHash } from "./db/queries/accounts.js";
 
 import { BadRequestError,ForbiddenError,NotFoundError,UnauthorizedError } from "./customErrors.js";
 
+declare global {
+    namespace Express {
+        interface Request {
+            account?:{
+                id: string;
+                planId: string;
+            };
+        }
+    }
+}
+
+export async function authenticateApiKey(req: Request, res: Response, next: NextFunction) {
+    const apiKey = req.get("X-API-Key");
+    if (!apiKey) {
+        throw new UnauthorizedError("Missing API key");
+    }
+    const apiKeyHash = hashApiKey(apiKey)
+    const account = await getAccountByApiKeyHash(apiKeyHash);
+    if (!account) {
+        throw new UnauthorizedError("Invalid API key");
+    }
+
+    req.account = { 
+        id: account.id,
+        planId: account.planId
+}
+    next();
+}
 
 export function errorHandler(err: Error, req: Request, res: Response, next: NextFunction) {
         if (res.headersSent) {

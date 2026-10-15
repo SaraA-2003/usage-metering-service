@@ -9,6 +9,6 @@ export async function createUser (user: NewUser){
 }
 
 export async function getUserById(id : string){
-    const user = await db.select().from(users).where(eq(users.id, id))
+    const [user] = await db.select().from(users).where(eq(users.id, id))
     return user
 }

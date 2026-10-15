@@ -8,7 +8,7 @@ export const plans = pgTable("plans", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name").notNull(),
   type: planType("type").notNull(),
-  accountId: uuid("account_id").references((): AnyPgColumn => accounts.id),
+  accountId: uuid("account_id").references((): AnyPgColumn => accounts.id, {onDelete:"restrict"}),
   isPredefined: boolean("is_predefined").notNull(),
   monthlyAllowance: integer("monthly_allowance").notNull(),
   maxUnitsPerRequest: integer("max_units_per_request").notNull(),
@@ -36,7 +36,7 @@ export const plans = pgTable("plans", {
 export const accounts = pgTable("accounts", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 255 }).notNull(),
-  planId: uuid("plan_id").notNull().references(() => plans.id),
+  planId: uuid("plan_id").notNull().references(() => plans.id, {onDelete:"restrict"}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
@@ -52,8 +52,8 @@ apiKeyHash: varchar("api_key_hash", { length: 64 })
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
-  accountId: uuid("account_id").notNull().references(() => accounts.id),
-  planId: uuid("plan_id").notNull().references(() => plans.id),
+  accountId: uuid("account_id").notNull().references(() => accounts.id, {onDelete:"restrict"}),
+  planId: uuid("plan_id").notNull().references(() => plans.id, {onDelete:"restrict"}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()

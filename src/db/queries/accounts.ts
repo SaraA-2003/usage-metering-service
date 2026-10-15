@@ -12,3 +12,9 @@ export async function getAccountById (id: string){
     const account = await db.select().from(accounts).where(eq(accounts.id, id))
     return account
 }
+
+export async function getAccountByApiKeyHash(apiKeyHash: string) {
+    const [account] = await db.select().from(accounts)
+        .where(eq(accounts.apiKeyHash, apiKeyHash)).limit(1);
+    return account;
+}
