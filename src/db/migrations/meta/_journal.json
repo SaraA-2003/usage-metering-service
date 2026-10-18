@@ -15,6 +15,13 @@
       "when": 1792083348824,
       "tag": "0001_Add_OnDelete_restrict",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792316814003,
+      "tag": "0002_Add_account_and_user_usage_and_consumptionRequestsHistory",
+      "breakpoints": true
     }
   ]
 }

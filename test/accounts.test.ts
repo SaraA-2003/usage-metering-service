@@ -16,7 +16,7 @@ let customPlanId: string;
 
 // Clears the application tables in DB_URL before inserting test fixtures.
 beforeAll(async () => {
-  await db.execute(sql`TRUNCATE TABLE users, accounts, plans`);
+  await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
   const [accountPlan] = await db.insert(plans).values({
     name: "Test account plan", type: "account", isPredefined: true,
     monthlyAllowance: 1000, maxUnitsPerRequest: 100,
@@ -36,6 +36,7 @@ beforeAll(async () => {
     accountId: owner!.id, monthlyAllowance: 2000, maxUnitsPerRequest: 200,
   }).returning();
   customPlanId = customPlan!.id;
+  // Port 0 asks the OS for an available port; no separate API server is needed.
   server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -104,5 +105,47 @@ describe("POST /api/accounts", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: expect.any(String) });
     expect(await db.select().from(accounts)).toHaveLength(before.length);
+  });
+});
+
+describe("GET /api/accounts/:id", () => {
+  it("returns the authenticated account without its key hash", async () => {
+    const [owner] = await db.select().from(accounts)
+      .where(eq(accounts.apiKeyHash, hashApiKey("fixture-owner-key")));
+    const res = await fetch(`${baseUrl}/api/accounts/${owner!.id}`, {
+      headers: { "X-API-Key": "fixture-owner-key" },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ id: owner!.id, planId: accountPlanId });
+    expect(body).not.toHaveProperty("apiKeyHash");
+    expect(body).not.toHaveProperty("apiKey");
+  });
+
+  it.each([null, "wrong-key"])("returns 401 for key %s", async (key) => {
+    const res = await fetch(`${baseUrl}/api/accounts/${randomUUID()}`, {
+      headers: key === null ? {} : { "X-API-Key": key },
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toHaveProperty("error");
+  });
+
+  it("returns 404 when a valid key targets another existing account", async () => {
+    const [other] = await db.insert(accounts).values({
+      name: "Other account", planId: accountPlanId, apiKeyHash: hashApiKey("other-lookup-key"),
+    }).returning();
+    const res = await fetch(`${baseUrl}/api/accounts/${other!.id}`, {
+      headers: { "X-API-Key": "fixture-owner-key" },
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Account not found" });
+  });
+
+  it("returns 400 for an invalid account UUID", async () => {
+    const res = await fetch(`${baseUrl}/api/accounts/invalid`, {
+      headers: { "X-API-Key": "fixture-owner-key" },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Account ID must be a valid UUID" });
   });
 });

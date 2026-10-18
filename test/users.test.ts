@@ -19,7 +19,7 @@ let otherAccountPlanId: string;
 // This suite clears the application tables in the database selected by DB_URL.
 // Run only against a database whose application data may be deleted.
 beforeAll(async () => {
-  await db.execute(sql`TRUNCATE TABLE users, accounts, plans`);
+  await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
   const [accountPlan] = await db.insert(plans).values({
     name: "Test account plan", type: "account", isPredefined: true,
     monthlyAllowance: 1000, maxUnitsPerRequest: 100,
@@ -43,6 +43,7 @@ beforeAll(async () => {
   ]).returning();
   customPlanId = customPlans[0]!.id;
   otherAccountPlanId = customPlans[1]!.id;
+  // Port 0 asks the OS for an available port; requests use the real middleware.
   server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -133,14 +134,14 @@ describe("POST /api/users", () => {
 describe("GET /api/users/:id", () => {
   it("returns a stored user", async () => {
     const [user] = await db.insert(users).values({ accountId, planId: userPlanId }).returning();
-    const res = await fetch(`${baseUrl}/api/users/${user!.id}`);
+    const res = await fetch(`${baseUrl}/api/users/${user!.id}`, { headers: { "X-API-Key": "test-key-one" } });
     expect(res.status).toBe(200);
     // HTTP JSON serializes database Date objects as ISO strings.
     expect(await res.json()).toEqual(JSON.parse(JSON.stringify(user)));
   });
 
   it("returns 404 for a nonexistent user", async () => {
-    const res = await fetch(`${baseUrl}/api/users/${randomUUID()}`);
+    const res = await fetch(`${baseUrl}/api/users/${randomUUID()}`, { headers: { "X-API-Key": "test-key-one" } });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "User not found" });
   });
@@ -149,5 +150,32 @@ describe("GET /api/users/:id", () => {
     const res = await fetch(`${baseUrl}/api/users`);
     expect(res.status).toBe(404);
     await res.text();
+  });
+});
+
+describe("User lookup authentication and isolation", () => {
+  it.each([null, "wrong-key"])("returns 401 for key %s", async (key) => {
+    const res = await fetch(`${baseUrl}/api/users/${randomUUID()}`, {
+      headers: key === null ? {} : { "X-API-Key": key },
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toHaveProperty("error");
+  });
+
+  it("returns 404 when another account requests an existing user", async () => {
+    const [user] = await db.insert(users).values({ accountId, planId: userPlanId }).returning();
+    const res = await fetch(`${baseUrl}/api/users/${user!.id}`, {
+      headers: { "X-API-Key": "test-key-two" },
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "User not found" });
+  });
+
+  it("returns 400 for an invalid user UUID", async () => {
+    const res = await fetch(`${baseUrl}/api/users/invalid`, {
+      headers: { "X-API-Key": "test-key-one" },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "User ID must be a valid UUID" });
   });
 });

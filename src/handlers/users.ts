@@ -34,10 +34,10 @@ export async function handlerCreateUser(req: Request, res: Response, next: NextF
 
 export async function handlerGetUserById(req: Request, res: Response, next: NextFunction) {
   const userId = req.params.id
-  if(typeof userId != "string"){
-    throw new BadRequestError("User ID must be a string");
+  if (!z.uuid().safeParse(userId).success || typeof userId !== "string") {
+    throw new BadRequestError("User ID must be a valid UUID");
   }
-  const user = await getUserById(userId);
+  const user = await getUserById(userId, req.account!.id);
   if (!user) {
     throw new NotFoundError("User not found");
   }

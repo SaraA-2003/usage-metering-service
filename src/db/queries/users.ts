@@ -1,6 +1,6 @@
 import { db } from "../index.js";
 import { users, NewUser, User } from "../schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 
 export async function createUser (user: NewUser){
@@ -8,7 +8,9 @@ export async function createUser (user: NewUser){
     return newUser
 }
 
-export async function getUserById(id : string){
-    const [user] = await db.select().from(users).where(eq(users.id, id))
+export async function getUserById(id: string, accountId: string){
+    // Filter by ownership in the query so another account's user is never returned.
+    const [user] = await db.select().from(users)
+        .where(and(eq(users.id, id), eq(users.accountId, accountId)))
     return user
 }

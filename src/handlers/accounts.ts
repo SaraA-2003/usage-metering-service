@@ -27,6 +27,7 @@ export async function handlerCreateAccount(req: Request, res: Response, next: Ne
     throw new BadRequestError("New accounts must be assigned a predefined plan");
   }
 
+  // Store the hash and return the original key only in this creation response.
   const apiKey = generateApiKey();
   const hashedApiKey = hashApiKey(apiKey)
   const account = await createAccount({ ...result.data, apiKeyHash:hashedApiKey});
@@ -38,9 +39,17 @@ export async function handlerCreateAccount(req: Request, res: Response, next: Ne
 }
 
 export async function handlerGetAccountById(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  if (!z.uuid().safeParse(req.params.id).success) {
+    throw new BadRequestError("Account ID must be a valid UUID");
+  }
+  // Use the same 404 for missing and other accounts to avoid revealing their existence.
+  if (req.params.id !== req.account!.id) {
+    throw new NotFoundError("Account not found");
+  }
   const [account] = await getAccountById(req.params.id);
   if (!account) {
     throw new NotFoundError("Account not found");
   }
-  res.status(200).json(account);
+  const { apiKeyHash, ...publicAccount } = account;
+  res.status(200).json(publicAccount);
 }

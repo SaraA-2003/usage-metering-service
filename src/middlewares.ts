@@ -5,6 +5,7 @@ import { getAccountByApiKeyHash } from "./db/queries/accounts.js";
 
 import { BadRequestError,ForbiddenError,NotFoundError,UnauthorizedError } from "./customErrors.js";
 
+// Protected routes receive this account from authenticateApiKey.
 declare global {
     namespace Express {
         interface Request {
@@ -21,6 +22,7 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
     if (!apiKey) {
         throw new UnauthorizedError("Missing API key");
     }
+    // Compare hashes because the database never stores the original key.
     const apiKeyHash = hashApiKey(apiKey)
     const account = await getAccountByApiKeyHash(apiKeyHash);
     if (!account) {
@@ -35,6 +37,7 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
 }
 
 export function errorHandler(err: Error, req: Request, res: Response, next: NextFunction) {
+        // A response has already started, so let Express handle the remaining error.
         if (res.headersSent) {
         next(err);
         return;
