@@ -18,3 +18,11 @@ export async function getAccountByApiKeyHash(apiKeyHash: string) {
         .where(eq(accounts.apiKeyHash, apiKeyHash)).limit(1);
     return account;
 }
+
+export async function updateAccountPlan(id: string, planId: string) {
+    const [updatedAccount] = await db.update(accounts)
+        .set({ planId })
+        .where(eq(accounts.id, id))
+        .returning();
+    return updatedAccount;
+}

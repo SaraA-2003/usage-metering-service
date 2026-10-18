@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { app } from "../src/app.js";
 import { db } from "../src/db/index.js";
-import { accounts, plans } from "../src/db/schema.js";
+import { accounts, plans, accountMonthlyUsage } from "../src/db/schema.js";
 import { hashApiKey } from "../src/auth.js";
 
 let server: Server | undefined;
@@ -145,6 +145,105 @@ describe("GET /api/accounts/:id", () => {
     const res = await fetch(`${baseUrl}/api/accounts/invalid`, {
       headers: { "X-API-Key": "fixture-owner-key" },
     });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Account ID must be a valid UUID" });
+  });
+});
+
+describe("PATCH /api/accounts/:id/plan", () => {
+  async function fixture() {
+    const apiKey = `switch-${randomUUID()}`;
+    const [account] = await db.insert(accounts).values({
+      name: "Switch plan account", planId: accountPlanId, apiKeyHash: hashApiKey(apiKey),
+    }).returning();
+    return { account: account!, apiKey };
+  }
+
+  function switchPlan(id: string, body: unknown, apiKey: string | null) {
+    return fetch(`${baseUrl}/api/accounts/${id}/plan`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(apiKey ? { "X-API-Key": apiKey } : {}) },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it.each([true, false])("assigns an allowed plan (predefined: %s) and preserves usage", async (isPredefined) => {
+    const { account, apiKey } = await fixture();
+    const [plan] = await db.insert(plans).values({
+      name: "Replacement account plan", type: "account", isPredefined,
+      accountId: isPredefined ? null : account.id,
+      monthlyAllowance: 10, maxUnitsPerRequest: 5,
+    }).returning();
+    await db.insert(accountMonthlyUsage).values([
+      { accountId: account.id, month: "2026-09-01", consumedUnits: 20 },
+      { accountId: account.id, month: "2026-10-01", consumedUnits: 50 },
+    ]);
+    const usageBefore = await db.select().from(accountMonthlyUsage)
+      .where(eq(accountMonthlyUsage.accountId, account.id));
+
+    const res = await switchPlan(account.id, { planId: plan!.id }, apiKey);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ id: account.id, name: account.name, planId: plan!.id });
+    expect(body).not.toHaveProperty("apiKeyHash");
+    expect(body).not.toHaveProperty("apiKey");
+    const [stored] = await db.select().from(accounts).where(eq(accounts.id, account.id));
+    expect(stored).toMatchObject({ planId: plan!.id, apiKeyHash: hashApiKey(apiKey) });
+    expect(await db.select().from(accountMonthlyUsage)
+      .where(eq(accountMonthlyUsage.accountId, account.id))).toEqual(usageBefore);
+  });
+
+  for (const scenario of [
+    { name: "a user plan", planId: () => userPlanId, status: 400,
+      message: "Accounts must be assigned an account plan, not a user plan" },
+    { name: "another account's custom plan", planId: () => customPlanId, status: 403,
+      message: "You cannot assign a custom plan owned by another account" },
+    { name: "a nonexistent plan", planId: () => randomUUID(), status: 404,
+      message: "The requested plan was not found" },
+  ]) {
+    it(`rejects ${scenario.name} without changing the account`, async () => {
+      const { account, apiKey } = await fixture();
+      const res = await switchPlan(account.id, { planId: scenario.planId() }, apiKey);
+      expect(res.status).toBe(scenario.status);
+      expect(await res.json()).toEqual({ error: scenario.message });
+      const [stored] = await db.select().from(accounts).where(eq(accounts.id, account.id));
+      expect(stored).toEqual(account);
+    });
+  }
+
+  it.each([undefined, {}, { planId: "invalid" }, { planId: 123 },
+    { planId: randomUUID(), name: "Unexpected" }])("rejects invalid body %j", async (body) => {
+    const { account, apiKey } = await fixture();
+    const res = await switchPlan(account.id, body, apiKey);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: expect.any(String) });
+    const [stored] = await db.select().from(accounts).where(eq(accounts.id, account.id));
+    expect(stored).toEqual(account);
+  });
+
+  it.each([null, "wrong-key"])("rejects API key %s", async (key) => {
+    const { account } = await fixture();
+    const res = await switchPlan(account.id, { planId: accountPlanId }, key);
+    expect(res.status).toBe(401);
+    const [stored] = await db.select().from(accounts).where(eq(accounts.id, account.id));
+    expect(stored).toEqual(account);
+  });
+
+  it.each([true, false])("returns 404 for an inaccessible account (exists: %s)", async (exists) => {
+    const { apiKey } = await fixture();
+    const other = exists ? (await fixture()).account : undefined;
+    const res = await switchPlan(other?.id ?? randomUUID(), { planId: accountPlanId }, apiKey);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Account not found" });
+    if (other) {
+      const [stored] = await db.select().from(accounts).where(eq(accounts.id, other.id));
+      expect(stored).toEqual(other);
+    }
+  });
+
+  it("rejects an invalid account UUID", async () => {
+    const { apiKey } = await fixture();
+    const res = await switchPlan("invalid", { planId: accountPlanId }, apiKey);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Account ID must be a valid UUID" });
   });

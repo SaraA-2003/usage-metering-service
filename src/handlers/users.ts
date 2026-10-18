@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { createUser, getUserById } from "../db/queries/users.js";
+import { createUser, getUserById, updateUserPlan } from "../db/queries/users.js";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../customErrors.js";
 import z from "zod";
 import { getPlanById } from "../db/queries/plans.js";
@@ -42,4 +42,34 @@ export async function handlerGetUserById(req: Request, res: Response, next: Next
     throw new NotFoundError("User not found");
   }
   res.status(200).json(user);
+}
+
+export async function handlerSwitchUserPlan(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  if (!z.uuid().safeParse(req.params.id).success) {
+    throw new BadRequestError("User ID must be a valid UUID");
+  }
+  const result = createUserSchema.safeParse(req.body);
+  if (!result.success) {
+    throw new BadRequestError(result.error.issues.map((issue) => issue.message).join("; "));
+  }
+  const accountId = req.account!.id;
+  const user = await getUserById(req.params.id, accountId);
+  if (!user) {
+    throw new NotFoundError("User not found");
+  }
+  const plan = await getPlanById(result.data.planId);
+  if (!plan) {
+    throw new NotFoundError("The requested plan was not found");
+  }
+  if (plan.type !== "user") {
+    throw new BadRequestError("Users must be assigned a user plan, not an account plan");
+  }
+  if (!plan.isPredefined && plan.accountId !== accountId) {
+    throw new ForbiddenError("You cannot assign a custom plan owned by another account");
+  }
+  const updatedUser = await updateUserPlan(user.id, accountId, plan.id);
+  if (!updatedUser) {
+    throw new NotFoundError("User not found");
+  }
+  res.status(200).json(updatedUser);
 }

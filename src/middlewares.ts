@@ -3,7 +3,7 @@ import type { Account } from "./db/schema.js";
 import { hashApiKey } from "./auth.js";
 import { getAccountByApiKeyHash } from "./db/queries/accounts.js";
 
-import { BadRequestError,ForbiddenError,NotFoundError,UnauthorizedError } from "./customErrors.js";
+import { BadRequestError,ConflictError,ForbiddenError,NotFoundError,UnauthorizedError } from "./customErrors.js";
 
 // Protected routes receive this account from authenticateApiKey.
 declare global {
@@ -42,7 +42,9 @@ export function errorHandler(err: Error, req: Request, res: Response, next: Next
         next(err);
         return;
     }
-    if (err instanceof BadRequestError) {
+    if (err instanceof ConflictError) {
+        res.status(409).json({ error: err.message });
+    } else if (err instanceof BadRequestError) {
         res.status(400).json({ error: err.message });
     } else if (err instanceof UnauthorizedError) {
         res.status(401).json({ error: err.message });

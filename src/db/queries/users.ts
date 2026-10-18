@@ -14,3 +14,10 @@ export async function getUserById(id: string, accountId: string){
         .where(and(eq(users.id, id), eq(users.accountId, accountId)))
     return user
 }
+
+export async function updateUserPlan(id: string, accountId: string, planId: string) {
+    const [user] = await db.update(users).set({ planId })
+        .where(and(eq(users.id, id), eq(users.accountId, accountId)))
+        .returning();
+    return user;
+}
