@@ -3,6 +3,7 @@ import { authenticateApiKey, errorHandler } from "./middlewares.js";
 import { handlerCreateAccount, handlerGetAccountById, handlerSwitchAccountPlan } from "./handlers/accounts.js";
 import { handlerCreateUser, handlerGetUserById, handlerSwitchUserPlan } from "./handlers/users.js";
 import { handlerCreatePlan, handlerGetPlans, handlerUpdatePlan } from "./handlers/plans.js";
+import { handlerConsume } from "./handlers/consumptions.js";
 
 // Keep listening in index.ts so tests can start this app on their own port.
 export const app = express();
@@ -23,6 +24,8 @@ app.patch("/api/users/:id/plan", authenticateApiKey, handlerSwitchUserPlan);
 app.post("/api/plans", authenticateApiKey, handlerCreatePlan);
 app.get("/api/plans", authenticateApiKey, handlerGetPlans);
 app.put("/api/plans/:id", authenticateApiKey, handlerUpdatePlan);
+
+app.post("/api/consumptions", authenticateApiKey, handlerConsume);
 
 // Express forwards rejected async handlers here; this must follow the routes.
 app.use(errorHandler)
