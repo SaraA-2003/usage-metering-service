@@ -12,7 +12,7 @@ const createAccountSchema = z.strictObject({
 
 const usageQuerySchema = z.strictObject({
   month: z.string()
-    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Month must use YYYY-MM format")
+    .regex(/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/, "Month must use YYYY-MM format")
     .optional(),
 });
 //----------------------------------------------

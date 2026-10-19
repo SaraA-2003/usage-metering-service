@@ -7,7 +7,7 @@ import { hashApiKey } from "../src/auth.js";
 
 // Uses the same disposable DB_URL as the other integration suites.
 async function clearTables() {
-  await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+  await db.execute(sql`TRUNCATE TABLE client_sessions, consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
 }
 
 beforeEach(clearTables);

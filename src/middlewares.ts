@@ -1,3 +1,4 @@
+import { PlanNameConflict } from "./db/queries/plans.js";
 import type { Request, Response, NextFunction } from "express";
 import type { Account } from "./db/schema.js";
 import { hashApiKey } from "./auth.js";
@@ -42,7 +43,11 @@ export function errorHandler(err: Error, req: Request, res: Response, next: Next
         next(err);
         return;
     }
-    if (err instanceof ConflictError) {
+    if (err instanceof SyntaxError && "type" in err && err.type === "entity.parse.failed") {
+        res.status(400).json({ error: "Request body must be valid JSON object or array" });
+    } else if (err instanceof PlanNameConflict) {
+        res.status(409).json({ error: "A plan with this name and type already exists" });
+    } else if (err instanceof ConflictError) {
         res.status(409).json({ error: err.message });
     } else if (err instanceof BadRequestError) {
         res.status(400).json({ error: err.message });

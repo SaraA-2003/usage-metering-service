@@ -16,7 +16,7 @@ let customPlanId: string;
 
 // Clears the application tables in DB_URL before inserting test fixtures.
 beforeAll(async () => {
-  await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+  await db.execute(sql`TRUNCATE TABLE client_sessions, consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
   const [accountPlan] = await db.insert(plans).values({
     name: "Test account plan", type: "account", isPredefined: true,
     monthlyAllowance: 1000, maxUnitsPerRequest: 100,
@@ -59,7 +59,7 @@ afterAll(async () => {
     }
   } finally {
     try {
-      await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+      await db.execute(sql`TRUNCATE TABLE client_sessions, consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
     } finally {
       await db.$client.end();
     }
@@ -196,4 +196,43 @@ describe("PUT /api/plans/:id", () => {
     expect(res.status).toBe(404);
     await res.json();
   });
+});
+
+
+describe("Concurrent plan name validation", () => {
+  function write(name: string, id?: string) {
+    return fetch(`${baseUrl}/api/plans${id ? `/${id}` : ""}`, {
+      method: id ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": "fixture-owner-key" },
+      body: JSON.stringify(id ? { name } : { name, type: "user", monthlyAllowance: 100, maxUnitsPerRequest: 10 }),
+    });
+  }
+
+  it("allows only one simultaneous creation of the same normalized name", async () => {
+    const results = await Promise.all([write("Concurrent duplicate"), write(" concurrent DUPLICATE ")]);
+    expect(results.map(r => r.status).sort()).toEqual([201, 409]);
+  });
+
+  it("allows only one simultaneous rename to the same name", async () => {
+    const a = await write("Before rename A");
+    const b = await write("Before rename B");
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+    const first = await a.json();
+    const second = await b.json();
+    const results = await Promise.all([write("Shared renamed", first.id), write("SHARED RENAMED", second.id)]);
+    expect(results.map(r => r.status).sort()).toEqual([200, 409]);
+  });
+});
+
+it("database rejects normalized duplicate names even through direct SQL inserts", async () => {
+  await db.insert(plans).values({ name: "Database unique", type: "user", isPredefined: true,
+    monthlyAllowance: 100, maxUnitsPerRequest: 10 });
+  await expect(db.insert(plans).values({ name: " DATABASE UNIQUE ", type: "user", isPredefined: true,
+    monthlyAllowance: 100, maxUnitsPerRequest: 10 })).rejects.toThrow();
+  const [owner] = await db.select().from(accounts).where(eq(accounts.apiKeyHash, hashApiKey("fixture-owner-key")));
+  await db.insert(plans).values({ name: "Owner unique", type: "account", isPredefined: false,
+    accountId: owner!.id, monthlyAllowance: 100, maxUnitsPerRequest: 10 });
+  await expect(db.insert(plans).values({ name: " OWNER UNIQUE ", type: "account", isPredefined: false,
+    accountId: owner!.id, monthlyAllowance: 100, maxUnitsPerRequest: 10 })).rejects.toThrow();
 });

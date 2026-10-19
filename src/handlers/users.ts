@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { createUser, getUserById, getUserUsage, updateUserPlan } from "../db/queries/users.js";
+import { createUser, getUserById, getUserUsage, updateUserPlan, getUsersByAccount } from "../db/queries/users.js";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../customErrors.js";
 import z from "zod";
 import { getPlanById } from "../db/queries/plans.js";
@@ -10,7 +10,7 @@ const createUserSchema = z.strictObject({
 
 const usageQuerySchema = z.strictObject({
   month: z.string()
-    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Month must use YYYY-MM format")
+    .regex(/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/, "Month must use YYYY-MM format")
     .optional(),
 });
 
@@ -137,4 +137,7 @@ export async function handlerGetUserUsage(req: Request<{ id: string }>, res: Res
     consumedUnits,
     remainingUnits,
   });
+}
+export async function handlerGetUsers(req: Request, res: Response) {
+  res.status(200).json(await getUsersByAccount(req.account!.id));
 }

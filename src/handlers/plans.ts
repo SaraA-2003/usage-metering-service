@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { createPlan, getPlanById, getPlans, getPlansByName, updatePlan } from "../db/queries/plans.js";
+import { createPlan, getPlanById, getPlans, getPlansByName, getPredefinedPlans, updatePlan } from "../db/queries/plans.js";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../customErrors.js";
 import { z } from "zod";
 
@@ -83,4 +83,13 @@ export async function handlerUpdatePlan(req: Request, res: Response, next: NextF
     throw new NotFoundError("Plan not found");
   }
   res.status(200).json(updatedPlan);
+}
+
+export async function handlerGetPredefinedPlans(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const plans = await getPredefinedPlans();
+  res.status(200).json(plans);
 }

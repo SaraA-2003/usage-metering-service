@@ -22,6 +22,20 @@
       "when": 1792316814003,
       "tag": "0002_Add_account_and_user_usage_and_consumptionRequestsHistory",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792422903483,
+      "tag": "0003_plan_uniqueness_and_client_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792425371294,
+      "tag": "0004_browser_saved_accounts",
+      "breakpoints": true
     }
   ]
 }

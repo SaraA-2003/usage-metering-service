@@ -1,0 +1,1 @@
+ALTER TABLE "client_sessions" ADD COLUMN "browser_hash" varchar(64);

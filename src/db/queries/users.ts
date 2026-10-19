@@ -34,3 +34,6 @@ export async function getUserUsage(userId: string, month: string) {
 
   return usage;
 }
+export async function getUsersByAccount(accountId: string) {
+  return db.select().from(users).where(eq(users.accountId, accountId)).orderBy(users.id);
+}

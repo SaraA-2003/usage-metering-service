@@ -16,7 +16,7 @@ let customPlanId: string;
 
 // Clears the application tables in DB_URL before inserting test fixtures.
 beforeAll(async () => {
-  await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+  await db.execute(sql`TRUNCATE TABLE client_sessions, consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
   const [accountPlan] = await db.insert(plans).values({
     name: "Test account plan", type: "account", isPredefined: true,
     monthlyAllowance: 1000, maxUnitsPerRequest: 100,
@@ -54,7 +54,7 @@ afterAll(async () => {
     }
   } finally {
     try {
-      await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+      await db.execute(sql`TRUNCATE TABLE client_sessions, consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
     } finally {
       await db.$client.end();
     }
@@ -421,7 +421,7 @@ describe("GET /api/accounts/:id/usage month query", () => {
     expect(await res.json()).toEqual({ error: "Month cannot be after the current UTC month" });
   });
 
-  it.each(["", "2000-00", "2000-13", "2000-1", "00-01", "2000-01-01", "September"])(
+  it.each(["", "0000-01", "2000-00", "2000-13", "2000-1", "00-01", "2000-01-01", "September"])(
     "rejects invalid month %j", async month => {
       const { id, key } = await fixture();
       const res = await getUsage(id, key, `month=${encodeURIComponent(month)}`);

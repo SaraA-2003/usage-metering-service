@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Usage Metering Client</title>
+</head>
+
+<body>
+    <h1>Usage Metering</h1>
+
+    <section id="saved-accounts" hidden>
+        <h2>Saved accounts in this browser</h2>
+        <form id="saved-account-form">
+            <label>Account <select id="saved-account" required></select></label>
+            <button type="submit">Open account</button>
+        </form>
+    </section>
+    <form id="account-form">
+        <label>
+            Account name
+            <input id="account-name" required maxlength="255">
+        </label>
+
+        <label>
+            Account plan
+            <select id="account-plan" required></select>
+        </label>
+
+        <button type="submit">Create account</button>
+    </form>
+
+    <p id="message" role="status"></p>
+    <button id="use-another-account" type="button" hidden>Use another account</button>
+
+    <section id="account-usage" hidden>
+        <h2>Account usage</h2>
+        <p>Plan: <span id="usage-plan"></span></p>
+        <p>Maximum units per request: <span id="usage-max-per-request"></span></p>
+        <p>Consumed units: <span id="usage-consumed"></span></p>
+        <p>Remaining units: <span id="usage-remaining"></span></p>
+        <button id="refresh-usage" type="button">Refresh usage</button>
+    </section>
+
+    <section id="user-management" hidden>
+        <h2>Register a user</h2>
+
+        <form id="user-form">
+            <label>
+                User plan
+                <select id="user-plan" required></select>
+            </label>
+
+            <button type="submit">Register user</button>
+        </form>
+
+        <h3>Registered users</h3>
+        <ul id="user-list"></ul>
+
+        <h3>Change a user's plan</h3>
+        <form id="switch-plan-form">
+            <label>User <select id="switch-plan-user" required></select></label>
+            <label>New plan <select id="switch-plan-plan" required></select></label>
+            <button type="submit">Change plan</button>
+        </form>
+
+        <h3>Consume units</h3>
+
+        <form id="consumption-form">
+            <label>
+                User
+                <select id="consumption-user" required></select>
+            </label>
+
+            <label>
+                Units
+                <input id="consumption-units" type="number" min="1" max="2147483647" step="1" required>
+            </label>
+
+            <button type="submit">Consume</button>
+        </form>
+
+        <pre id="consumption-result" role="status"></pre>
+    </section>
+
+
+    <section id="history" hidden>
+        <h2>Consumption history</h2>
+        <form id="history-form">
+            <label>Records per page
+                <input id="history-limit" type="number" min="1" max="100" step="1" value="20" required>
+            </label>
+            <label>User
+                <select id="history-user"><option value="">All users</option></select>
+            </label>
+            <button type="submit">Load history</button>
+        </form>
+        <p id="history-status" role="status"></p>
+        <table>
+            <thead><tr><th>Time</th><th>User</th><th>Units</th><th>Decision</th><th>Blocking rule</th><th>Request ID</th></tr></thead>
+            <tbody id="history-rows"></tbody>
+        </table>
+        <button id="history-previous" type="button" disabled>Previous</button>
+        <button id="history-next" type="button" disabled>Next</button>
+    </section>
+    <script src="/app.js" defer></script>
+</body>
+
+</html>

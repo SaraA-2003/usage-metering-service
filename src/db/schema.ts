@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, integer, pgEnum, pgTable, primaryKey, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, pgEnum, pgTable, primaryKey, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 // The explicit column type resolves type inference for plans <-> accounts references.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
@@ -19,6 +19,10 @@ export const plans = pgTable("plans", {
     .defaultNow()
     .$onUpdate(() => new Date()),
 }, (table) => [
+  uniqueIndex("plans_predefined_name_type_unique")
+    .on(table.type, sql`lower(trim(${table.name}))`).where(sql`${table.isPredefined} = true`),
+  uniqueIndex("plans_custom_owner_name_type_unique")
+    .on(table.accountId, table.type, sql`lower(trim(${table.name}))`).where(sql`${table.isPredefined} = false`),
   check("plans_monthly_allowance_nonnegative", sql`${table.monthlyAllowance} >= 0`),
   check("plans_max_units_per_request_positive", sql`${table.maxUnitsPerRequest} > 0`),
   // Predefined plans have no owner; custom plans must belong to an account.
@@ -127,3 +131,12 @@ export const consumptionRequests = pgTable("consumption_requests", {
 
 export type NewConsumptionRequest = typeof consumptionRequests.$inferInsert;
 export type ConsumptionRequest = typeof consumptionRequests.$inferSelect;
+
+// Example client sessions store encrypted API keys, never plaintext keys.
+export const clientSessions = pgTable("client_sessions", {
+  idHash: varchar("id_hash", { length: 64 }).primaryKey(),
+  browserHash: varchar("browser_hash", { length: 64 }),
+  accountId: uuid("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  encryptedKey: varchar("encrypted_key").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});

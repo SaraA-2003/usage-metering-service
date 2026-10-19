@@ -19,7 +19,7 @@ let otherAccountPlanId: string;
 // This suite clears the application tables in the database selected by DB_URL.
 // Run only against a database whose application data may be deleted.
 beforeAll(async () => {
-  await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+  await db.execute(sql`TRUNCATE TABLE client_sessions, consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
   const [accountPlan] = await db.insert(plans).values({
     name: "Test account plan", type: "account", isPredefined: true,
     monthlyAllowance: 1000, maxUnitsPerRequest: 100,
@@ -61,7 +61,7 @@ afterAll(async () => {
     }
   } finally {
     try {
-      await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+      await db.execute(sql`TRUNCATE TABLE client_sessions, consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
     } finally {
       await db.$client.end();
     }
@@ -150,9 +150,9 @@ describe("GET /api/users/:id", () => {
     expect(await res.json()).toEqual({ error: "User not found" });
   });
 
-  it("returns 404 when no user ID is present in the URL", async () => {
+  it("requires authentication when listing users", async () => {
     const res = await fetch(`${baseUrl}/api/users`);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
     await res.text();
   });
 });
@@ -442,7 +442,7 @@ describe("GET /api/users/:id/usage month query", () => {
     expect(await res.json()).toEqual({ error: "Month cannot be after the current UTC month" });
   });
 
-  it.each(["", "2000-00", "2000-13", "2000-1", "00-01", "2000-01-01", "September"])(
+  it.each(["", "0000-01", "2000-00", "2000-13", "2000-1", "00-01", "2000-01-01", "September"])(
     "rejects invalid month %j", async month => {
       const { id, key } = await fixture();
       const res = await getUsage(id, key, `month=${encodeURIComponent(month)}`);
@@ -463,5 +463,20 @@ describe("GET /api/users/:id/usage month query", () => {
     const res = await getUsage(id, "test-key-two", "month=2000-01");
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "User not found" });
+  });
+});
+
+
+describe("GET /api/users", () => {
+  it("lists only users belonging to the authenticated account", async () => {
+    await db.insert(users).values({ accountId, planId: userPlanId });
+    const [other] = await db.select().from(accounts).where(eq(accounts.apiKeyHash, hashApiKey("test-key-two")));
+    const [foreign] = await db.insert(users).values({ accountId: other!.id, planId: userPlanId }).returning();
+    const res = await fetch(`${baseUrl}/api/users`, { headers: { "X-API-Key": "test-key-one" } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.length).toBeGreaterThan(0);
+    expect(body.every((user: { accountId: string }) => user.accountId === accountId)).toBe(true);
+    expect(body.some((user: { id: string }) => user.id === foreign!.id)).toBe(false);
   });
 });

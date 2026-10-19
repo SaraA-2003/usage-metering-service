@@ -13,7 +13,7 @@ let baseUrl: string;
 
 // Like the existing suites, this clears application data in the configured DB_URL.
 beforeAll(async () => {
-  await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+  await db.execute(sql`TRUNCATE TABLE client_sessions, consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
   server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -29,7 +29,7 @@ afterAll(async () => {
     });
   } finally {
     try {
-      await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+      await db.execute(sql`TRUNCATE TABLE client_sessions, consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
     } finally {
       await db.$client.end();
     }
@@ -37,9 +37,9 @@ afterAll(async () => {
 });
 
 async function fixture(accountAllowance = 100, userAllowance = 50, accountMax = 40, userMax = 20) {
-  const [accountPlan] = await db.insert(plans).values({ name: "Account", type: "account", isPredefined: true,
+  const [accountPlan] = await db.insert(plans).values({ name: `Account ${randomUUID()}`, type: "account", isPredefined: true,
     monthlyAllowance: accountAllowance, maxUnitsPerRequest: accountMax }).returning();
-  const [userPlan] = await db.insert(plans).values({ name: "User", type: "user", isPredefined: true,
+  const [userPlan] = await db.insert(plans).values({ name: `User ${randomUUID()}`, type: "user", isPredefined: true,
     monthlyAllowance: userAllowance, maxUnitsPerRequest: userMax }).returning();
   const key = randomUUID();
   const [account] = await db.insert(accounts).values({ name: "App", planId: accountPlan!.id,
@@ -373,5 +373,16 @@ describe("GET /api/consumptions/history", () => {
     const res = await history(f.key, query);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: expect.any(String) });
+  });
+});
+
+
+describe("JSON parsing errors", () => {
+  it.each(["null", "{broken", "123"])("returns 400 for invalid JSON body %s", async body => {
+    const res = await fetch(`${baseUrl}/api/consumptions`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body,
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toHaveProperty("error");
   });
 });
