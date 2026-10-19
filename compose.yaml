@@ -1,0 +1,63 @@
+# Local development/demo credentials; this database is separate from your WSL DB_URL.
+x-app-environment: &app-environment
+  DB_URL: postgres://usage:usage_local@db:5432/usage_metering
+  PLATFORM: docker
+  PORT: "8080"
+
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: usage
+      POSTGRES_PASSWORD: usage_local
+      POSTGRES_DB: usage_metering
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usage -d usage_metering"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build: .
+    environment: *app-environment
+    command: ["npm", "run", "migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    environment: *app-environment
+    ports:
+      - "127.0.0.1:${PORT:-8080}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/api/plans/predefined').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  client:
+    build: .
+    environment:
+      <<: *app-environment
+      API_URL: http://api:8080
+      SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY:?Set SESSION_ENCRYPTION_KEY in .env}
+    command: ["node", "--import", "tsx", "examples/web/server.ts"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres_data:
