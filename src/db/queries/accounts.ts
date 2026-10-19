@@ -1,6 +1,6 @@
 import { db } from "../index.js";
-import { Account, NewAccount, accounts } from "../schema.js";
-import { eq } from "drizzle-orm";
+import { Account, NewAccount, accountMonthlyUsage, accounts } from "../schema.js";
+import { and, eq } from "drizzle-orm";
 
 
 export async function createAccount(account: NewAccount){
@@ -25,4 +25,16 @@ export async function updateAccountPlan(id: string, planId: string) {
         .where(eq(accounts.id, id))
         .returning();
     return updatedAccount;
+}
+
+export async function getAccountUsage(accountId: string, month: string) {
+  const [usage] = await db
+    .select()
+    .from(accountMonthlyUsage)
+    .where(and(
+      eq(accountMonthlyUsage.accountId, accountId),
+      eq(accountMonthlyUsage.month, month),
+    ));
+
+  return usage;
 }

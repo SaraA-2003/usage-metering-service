@@ -248,3 +248,195 @@ describe("PATCH /api/accounts/:id/plan", () => {
     expect(await res.json()).toEqual({ error: "Account ID must be a valid UUID" });
   });
 });
+
+describe("GET /api/accounts/:id/usage", () => {
+  async function fixture() {
+    const apiKey = `usage-${randomUUID()}`;
+    const [account] = await db.insert(accounts).values({
+      name: "Usage account", planId: accountPlanId, apiKeyHash: hashApiKey(apiKey),
+    }).returning();
+    return { account: account!, apiKey };
+  }
+
+  function currentMonth() {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  }
+
+  function getUsage(id: string, apiKey: string | null) {
+    return fetch(`${baseUrl}/api/accounts/${id}/usage`, {
+      headers: apiKey === null ? {} : { "X-API-Key": apiKey },
+    });
+  }
+
+  it("returns plan limits and zero usage without creating a monthly row", async () => {
+    const { account, apiKey } = await fixture();
+    const res = await getUsage(account.id, apiKey);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      accountId: account.id, month: currentMonth(),
+      plan: { id: accountPlanId, name: "Test account plan", monthlyAllowance: 1000, maxUnitsPerRequest: 100 },
+      consumedUnits: 0, remainingUnits: 1000,
+    });
+    expect(await db.select().from(accountMonthlyUsage)
+      .where(eq(accountMonthlyUsage.accountId, account.id))).toHaveLength(0);
+  });
+
+  it("returns only this account's current UTC month and leaves usage unchanged", async () => {
+    const { account, apiKey } = await fixture();
+    const other = await fixture();
+    await db.insert(accountMonthlyUsage).values([
+      { accountId: account.id, month: currentMonth(), consumedUnits: 250 },
+      { accountId: account.id, month: "2000-01-01", consumedUnits: 900 },
+      { accountId: other.account.id, month: currentMonth(), consumedUnits: 800 },
+    ]);
+    const before = await db.select().from(accountMonthlyUsage)
+      .where(eq(accountMonthlyUsage.accountId, account.id));
+    const res = await getUsage(account.id, apiKey);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ month: currentMonth(), consumedUnits: 250, remainingUnits: 750 });
+    expect(await db.select().from(accountMonthlyUsage)
+      .where(eq(accountMonthlyUsage.accountId, account.id))).toEqual(before);
+  });
+
+  it("treats historical usage alone as zero current usage", async () => {
+    const { account, apiKey } = await fixture();
+    await db.insert(accountMonthlyUsage).values({ accountId: account.id, month: "2000-01-01", consumedUnits: 900 });
+    const res = await getUsage(account.id, apiKey);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ consumedUnits: 0, remainingUnits: 1000 });
+  });
+
+  it.each([1000, 1200])("clamps remaining allowance to zero at %i consumed units", async consumedUnits => {
+    const { account, apiKey } = await fixture();
+    await db.insert(accountMonthlyUsage).values({ accountId: account.id, month: currentMonth(), consumedUnits });
+    const res = await getUsage(account.id, apiKey);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ consumedUnits, remainingUnits: 0 });
+  });
+
+  it("reflects plan switches and custom plan edits while preserving consumed units", async () => {
+    const { account, apiKey } = await fixture();
+    await db.insert(accountMonthlyUsage).values({ accountId: account.id, month: currentMonth(), consumedUnits: 250 });
+    const [plan] = await db.insert(plans).values({ name: "Usage custom plan", type: "account",
+      isPredefined: false, accountId: account.id, monthlyAllowance: 500, maxUnitsPerRequest: 50 }).returning();
+    const switched = await fetch(`${baseUrl}/api/accounts/${account.id}/plan`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body: JSON.stringify({ planId: plan!.id }),
+    });
+    expect(switched.status).toBe(200);
+    const first = await getUsage(account.id, apiKey);
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({ consumedUnits: 250, remainingUnits: 250,
+      plan: { id: plan!.id, monthlyAllowance: 500, maxUnitsPerRequest: 50 } });
+    const edited = await fetch(`${baseUrl}/api/plans/${plan!.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body: JSON.stringify({ name: "Reduced usage plan", monthlyAllowance: 100, maxUnitsPerRequest: 10 }),
+    });
+    expect(edited.status).toBe(200);
+    const second = await getUsage(account.id, apiKey);
+    expect(second.status).toBe(200);
+    expect(await second.json()).toMatchObject({ consumedUnits: 250, remainingUnits: 0,
+      plan: { id: plan!.id, name: "Reduced usage plan", monthlyAllowance: 100, maxUnitsPerRequest: 10 } });
+  });
+
+  it.each([null, "wrong-key"])("rejects API key %s", async key => {
+    const { account } = await fixture();
+    const res = await getUsage(account.id, key);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toHaveProperty("error");
+  });
+
+  it.each([true, false])("hides inaccessible accounts (exists: %s)", async exists => {
+    const { apiKey } = await fixture();
+    const target = exists ? (await fixture()).account.id : randomUUID();
+    const res = await getUsage(target, apiKey);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Account not found" });
+  });
+
+  it("rejects an invalid account UUID", async () => {
+    const { apiKey } = await fixture();
+    const res = await getUsage("invalid", apiKey);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Account ID must be a valid UUID" });
+  });
+});
+
+
+describe("GET /api/accounts/:id/usage month query", () => {
+  async function fixture() {
+    const key = `history-${randomUUID()}`;
+    const [record] = await db.insert(accounts).values({ name: "Historical usage", planId: accountPlanId,
+      apiKeyHash: hashApiKey(key) }).returning();
+    return { id: record!.id, key };
+  }
+
+  function getUsage(id: string, key: string, query: string) {
+    return fetch(`${baseUrl}/api/accounts/${id}/usage?${query}`, {
+      headers: { "X-API-Key": key },
+    });
+  }
+
+  it("returns the selected past month's usage with current plan limits", async () => {
+    const { id, key } = await fixture();
+    await db.insert(accountMonthlyUsage).values([
+      { accountId: id, month: "2000-01-01", consumedUnits: 250 },
+      { accountId: id, month: "2000-02-01", consumedUnits: 1 },
+    ]);
+    const res = await getUsage(id, key, "month=2000-01");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ accountId: id, month: "2000-01-01",
+      consumedUnits: 250, remainingUnits: 750,
+      plan: { id: accountPlanId, monthlyAllowance: 1000 } });
+  });
+
+  it("returns zero for a past month without a usage row", async () => {
+    const { id, key } = await fixture();
+    const res = await getUsage(id, key, "month=2000-03");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ month: "2000-03-01", consumedUnits: 0, remainingUnits: 1000 });
+  });
+
+  it("accepts an explicitly requested current UTC month", async () => {
+    const { id, key } = await fixture();
+    const now = new Date();
+    const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+    const res = await getUsage(id, key, `month=${month}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ month: `${month}-01` });
+  });
+
+  it("rejects the next UTC month", async () => {
+    const { id, key } = await fixture();
+    const now = new Date();
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const month = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
+    const res = await getUsage(id, key, `month=${month}`);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Month cannot be after the current UTC month" });
+  });
+
+  it.each(["", "2000-00", "2000-13", "2000-1", "00-01", "2000-01-01", "September"])(
+    "rejects invalid month %j", async month => {
+      const { id, key } = await fixture();
+      const res = await getUsage(id, key, `month=${encodeURIComponent(month)}`);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: expect.any(String) });
+    },
+  );
+
+  it("rejects repeated month parameters", async () => {
+    const { id, key } = await fixture();
+    const res = await getUsage(id, key, "month=2000-01&month=2000-02");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: expect.any(String) });
+  });
+
+  it("still enforces ownership for historical queries", async () => {
+    const { id } = await fixture();
+    const res = await getUsage(id, "fixture-owner-key", "month=2000-01");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Account not found" });
+  });
+});

@@ -1,5 +1,5 @@
 import { db } from "../index.js";
-import { users, NewUser, User } from "../schema.js";
+import { users, NewUser, User, userMonthlyUsage } from "../schema.js";
 import { and, eq } from "drizzle-orm";
 
 
@@ -20,4 +20,17 @@ export async function updateUserPlan(id: string, accountId: string, planId: stri
         .where(and(eq(users.id, id), eq(users.accountId, accountId)))
         .returning();
     return user;
+}
+
+
+export async function getUserUsage(userId: string, month: string) {
+  const [usage] = await db
+    .select()
+    .from(userMonthlyUsage)
+    .where(and(
+      eq(userMonthlyUsage.userId, userId),
+      eq(userMonthlyUsage.month, month),
+    ));
+
+  return usage;
 }
