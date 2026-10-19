@@ -28,7 +28,11 @@ afterAll(async () => {
       server!.closeAllConnections();
     });
   } finally {
-    await db.$client.end();
+    try {
+      await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+    } finally {
+      await db.$client.end();
+    }
   }
 });
 
@@ -226,5 +230,148 @@ describe("POST /api/consumptions", () => {
     await consume(f, 1, ` ${id} `);
     expect((await consume(f, 1, id)).replayed).toBe(true);
     expect((await state(f)).account[0]!.consumedUnits).toBe(1);
+  });
+});
+
+describe("GET /api/consumptions/history", () => {
+  function history(key: string | null, query = "") {
+    return fetch(`${baseUrl}/api/consumptions/history${query ? `?${query}` : ""}`, {
+      headers: key === null ? {} : { "X-API-Key": key },
+    });
+  }
+
+  async function seed(f: Awaited<ReturnType<typeof fixture>>, count = 5) {
+    // Equal timestamps deliberately exercise the request ID tie breaker.
+    return db.insert(consumptionRequests).values(Array.from({ length: count }, (_, i) => ({
+      accountId: f.account.id, userId: i % 2 ? f.otherUser.id : f.user.id,
+      requestId: `history-${String(i).padStart(3, "0")}`, units: 1,
+      month: "2000-01-01", createdAt: new Date("2000-01-02T00:00:00Z"),
+      decision: i % 2 ? "rejected" as const : "accepted" as const,
+      blockingLevel: i % 2 ? "user" as const : null,
+      blockingRule: i % 2 ? "monthly_allowance" as const : null,
+    }))).returning();
+  }
+
+  it("returns an empty first page with defaults", async () => {
+    const f = await fixture();
+    const res = await history(f.key);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ requests: [], limit: 20, offset: 0, hasMore: false, nextOffset: null });
+  });
+
+  it("defaults to 20 records and orders newest first with deterministic timestamp ties", async () => {
+    const f = await fixture();
+    await seed(f, 22);
+    await db.insert(consumptionRequests).values({ accountId: f.account.id, userId: f.user.id,
+      requestId: "newest", units: 1, month: "2000-02-01", decision: "accepted",
+      createdAt: new Date("2000-02-02T00:00:00Z") });
+    const res = await history(f.key);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.limit).toBe(20);
+    expect(body.offset).toBe(0);
+    expect(body.hasMore).toBe(true);
+    expect(body.nextOffset).toBe(20);
+    expect(body.requests.map((r: { requestId: string }) => r.requestId)).toEqual([
+      "newest", ...Array.from({ length: 19 }, (_, i) => `history-${String(21 - i).padStart(3, "0")}`),
+    ]);
+  });
+
+  it("paginates accepted and rejected outcomes without overlap or changes to stored data", async () => {
+    const f = await fixture();
+    await seed(f);
+    const before = await state(f);
+    const ids: string[] = [];
+    for (const offset of [0, 2, 4]) {
+      const res = await history(f.key, `limit=2&offset=${offset}`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toMatchObject({ limit: 2, offset,
+        hasMore: offset < 4, nextOffset: offset < 4 ? offset + 2 : null });
+      ids.push(...body.requests.map((r: { requestId: string }) => r.requestId));
+      if (offset === 0) {
+        expect(body.requests[0]).toMatchObject({ decision: "accepted", blockingLevel: null, blockingRule: null });
+        expect(body.requests[1]).toMatchObject({ decision: "rejected", blockingLevel: "user", blockingRule: "monthly_allowance" });
+      }
+    }
+    expect(ids).toEqual(["history-004", "history-003", "history-002", "history-001", "history-000"]);
+    const beyond = await history(f.key, "limit=2&offset=10");
+    expect(beyond.status).toBe(200);
+    expect(await beyond.json()).toEqual({ requests: [], limit: 2, offset: 10, hasMore: false, nextOffset: null });
+    expect(await state(f)).toEqual(before);
+  });
+
+  it("filters by user before applying pagination", async () => {
+    const f = await fixture();
+    await seed(f);
+    const res = await history(f.key, `userId=${f.user.id}&limit=1&offset=1`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.requests).toHaveLength(1);
+    expect(body.requests[0]).toMatchObject({ userId: f.user.id, requestId: "history-002" });
+    expect(body).toMatchObject({ hasMore: true, nextOffset: 2 });
+    const last = await history(f.key, `userId=${f.user.id}&limit=1&offset=2`);
+    expect(last.status).toBe(200);
+    const lastBody = await last.json();
+    expect(lastBody.requests).toHaveLength(1);
+    expect(lastBody).toMatchObject({ hasMore: false, nextOffset: null });
+  });
+
+  it("returns empty history for an owned user without outcomes", async () => {
+    const f = await fixture();
+    await consume(f, 1);
+    const res = await history(f.key, `userId=${f.otherUser.id}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ requests: [], limit: 20, offset: 0, hasMore: false, nextOffset: null });
+  });
+
+  it("has no next page when exactly limit records remain", async () => {
+    const f = await fixture();
+    await seed(f, 4);
+    const res = await history(f.key, "limit=2&offset=2");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.requests).toHaveLength(2);
+    expect(body).toMatchObject({ hasMore: false, nextOffset: null });
+  });
+
+  it("excludes other accounts even when request IDs are identical", async () => {
+    const f = await fixture();
+    const other = await fixture();
+    await seed(f);
+    await seed(other);
+    const res = await history(f.key, "limit=100");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.requests).toHaveLength(5);
+    expect(body.requests.every((r: { accountId: string }) => r.accountId === f.account.id)).toBe(true);
+  });
+
+  it("hides foreign and nonexistent user filters", async () => {
+    const f = await fixture();
+    const other = await fixture();
+    for (const userId of [other.user.id, randomUUID()]) {
+      const res = await history(f.key, `userId=${userId}`);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "User not found" });
+    }
+  });
+
+  it.each([null, "wrong-key"])("rejects API key %s", async key => {
+    const res = await history(key);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toHaveProperty("error");
+  });
+
+  it.each([
+    "limit=0", "limit=101", "limit=-1", "limit=1.5", "limit=abc", "limit=",
+    "offset=-1", "offset=1.5", "offset=abc", "offset=", "offset=2147483648",
+    "userId=invalid", "userId=", "limit=1&limit=2", "offset=0&offset=1",
+    "userId=invalid&userId=invalid", "unknown=value",
+  ])("rejects invalid query %s", async query => {
+    const f = await fixture();
+    const res = await history(f.key, query);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: expect.any(String) });
   });
 });

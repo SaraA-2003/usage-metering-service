@@ -60,7 +60,11 @@ afterAll(async () => {
       });
     }
   } finally {
-    await db.$client.end();
+    try {
+      await db.execute(sql`TRUNCATE TABLE consumption_requests, user_monthly_usage, account_monthly_usage, users, accounts, plans`);
+    } finally {
+      await db.$client.end();
+    }
   }
 });
 

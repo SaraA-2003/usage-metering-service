@@ -1,5 +1,5 @@
 import { db } from "../index.js";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { accountMonthlyUsage, accounts, consumptionRequests, plans, userMonthlyUsage, users } from "../schema.js";
 import type { NewConsumptionRequest } from "../schema.js";
 import { sql } from "drizzle-orm";
@@ -16,6 +16,7 @@ Finds the account and locks its row until the transaction finishes.
 export async function getAccountForUpdate(tx: Transaction, accountId: string) 
 {
   const [account] = await tx.select().from(accounts).where(eq(accounts.id, accountId))
+    //lock the row, untill the transaction finishes
     .for("update");
   return account;
 }
@@ -116,4 +117,21 @@ export async function incrementUserUsage(tx: Transaction, userId: string,
     })
     .returning();
   return usage;
+}
+
+export async function getConsumptionHistory(accountId: string,limit: number,offset: number,userId?: string)
+ {
+  return db
+    .select()
+    .from(consumptionRequests)
+    .where(and(
+      eq(consumptionRequests.accountId, accountId),
+      userId ? eq(consumptionRequests.userId, userId) : undefined,
+    ))
+    .orderBy(
+      desc(consumptionRequests.createdAt),
+      desc(consumptionRequests.requestId),
+    )
+    .limit(limit)
+    .offset(offset);
 }
