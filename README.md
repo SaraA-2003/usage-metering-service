@@ -21,11 +21,10 @@ Includes an example web client, automated integration tests, and reproducible lo
 
 ## Installation and quick start
 
-Clone the repository using the commands below. Replace `<repository-url>` with
-the project's GitHub URL (to be added).
+Clone the repository using the commands below.
 
 ```bash
-git clone <repository-url> usage-metering
+git clone https://github.com/SaraA-2003/usage-metering-service.git usage-metering
 cd usage-metering
 ```
 
