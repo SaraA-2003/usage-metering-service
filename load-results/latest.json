@@ -1,0 +1,50 @@
+{
+  "recordedAt": "2026-10-20T14:46:08.428Z",
+  "mode": "local isolated API via tsx; PostgreSQL from DB_URL",
+  "runtime": "v24.21.0",
+  "os": "linux 6.18.33.2-microsoft-standard-WSL2",
+  "cpu": "AMD Ryzen 7 5700U with Radeon Graphics",
+  "logicalCpus": 16,
+  "memoryGiB": 7.43,
+  "totalRequests": 1000,
+  "concurrency": 20,
+  "accountCount": 10,
+  "scenarios": {
+    "sharedAccount": {
+      "attempted": 1000,
+      "accepted": 1000,
+      "rejected": 0,
+      "errors": 0,
+      "elapsedMs": 12133,
+      "requestsPerSecond": 82.42,
+      "p50Ms": 236.22,
+      "p95Ms": 289.37,
+      "p99Ms": 354.32,
+      "accountingVerified": true
+    },
+    "multipleAccounts": {
+      "attempted": 1000,
+      "accepted": 1000,
+      "rejected": 0,
+      "errors": 0,
+      "elapsedMs": 4769,
+      "requestsPerSecond": 209.7,
+      "p50Ms": 90.83,
+      "p95Ms": 130.54,
+      "p99Ms": 138.25,
+      "accountingVerified": true
+    },
+    "sharedQuotaBoundary": {
+      "attempted": 1000,
+      "accepted": 100,
+      "rejected": 900,
+      "errors": 0,
+      "elapsedMs": 10273,
+      "requestsPerSecond": 97.34,
+      "p50Ms": 195.36,
+      "p95Ms": 265.57,
+      "p99Ms": 297.68,
+      "accountingVerified": true
+    }
+  }
+}

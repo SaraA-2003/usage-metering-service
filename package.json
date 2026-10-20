@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "test": "node scripts/test.mjs",
     "generate": "drizzle-kit generate",
-    "migrate": "drizzle-kit migrate"
+    "migrate": "drizzle-kit migrate",
+    "load-test": "node scripts/run-load-test.mjs"
   },
   "keywords": [],
   "author": "",

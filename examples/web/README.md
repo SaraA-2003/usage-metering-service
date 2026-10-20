@@ -1,5 +1,9 @@
 # Example web client
 
+[Project overview](../../README.md) · [API reference](../../docs/API.md) · [Docker guide](../../DOCKER.md)
+
+## Setup
+
 The client server requires `DB_URL`, `PLATFORM`, and `PORT` as before, plus
 `SESSION_ENCRYPTION_KEY`: a persistent 32-byte encryption key encoded as 64 hex
 characters. Generate it once with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`
@@ -29,3 +33,34 @@ connections expire after seven days; opening one creates a fresh active session.
 Existing sessions can be linked to this browser when "Use another account" is
 clicked. Accounts whose session and original key were already lost cannot be
 recovered by this selector.
+
+
+## Using the page
+
+1. Choose a predefined account plan and create an account. Its API key stays on
+   the client server; the browser receives an HttpOnly session cookie.
+2. Register users with different user plans. The page shows monthly and per-request
+   limits in the dropdowns and account usage summary.
+3. Select a user, enter positive units, and submit consumption. The response shows
+   the decision, blocking reason when rejected, and remaining allowances for new requests.
+4. Use the Change plan form to assign a different user plan. Existing consumed
+   usage remains; a new consumption operation receives a new request ID.
+5. Browse history with a selected page size, optional user filter, and Previous/Next.
+6. Refresh to restore the current account. Use another account opens the saved-account
+   selector or allows creating a new account without deleting previous account data.
+
+## Architecture and limitations
+
+The browser calls `/client/...` routes on port 3000. The Express client server
+adds X-API-Key and forwards to the metering API. Browser JavaScript never receives
+account API keys. `client_sessions` stores encrypted keys and session/browser hashes;
+this persistence is part of the example client, separate from account API-key hashes.
+
+The page covers account creation, user registration, user plan switching, consumption,
+account usage, and filtered history. Custom-plan creation/editing, account plan
+switching, and historical-month selection are available through the API but do not
+have page controls. There is no end-user login or API-key recovery interface.
+The API is the source of truth for users and usage when an account is restored.
+
+For a complete two-user quota and plan-change walkthrough, see the
+[demonstration recipe](../../docs/API.md#required-demonstration-recipe).

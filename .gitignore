@@ -1,6 +1,12 @@
+# Dependencies and compiled output
 node_modules/
 dist/
+
+# Secrets and local environment settings
 .env
-# Test coverage and logs
+.env.*
+!.env.example
+
+# Generated coverage and logs
 coverage/
 *.log
